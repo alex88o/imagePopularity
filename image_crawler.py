@@ -170,6 +170,7 @@ else:
     with open(pickle_image_list,'r') as f:
         known_images = pickle.load(f)
 
+seqday = 0
 if len(argv)>1:
     seqday = int(argv[1])
 ##-----------------------------------------------------------------
@@ -270,8 +271,8 @@ flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
 # Get the list of images to download
 new_images_count = 1000
 photo_data = []
-photo_ids = []
-while len(photo_ids) <= new_images_count:
+photo_set = []
+while len(photo_set) <= new_images_count:
 
     attempts = 0
     try :
@@ -291,13 +292,12 @@ while len(photo_ids) <= new_images_count:
         page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
         print "Second page request:\t"+recent_photos_p2['stat']
         #Some photos may shift to the second page between the two calls            
-        photo_set = list(set(page_1+page_2))
-        photo_ids.extend(photo_set)
+        photo_set = list(set(photo_set+page_1+page_2))
         photo_data.extend(recent_photos_p1['photos']['photo'])
         photo_data.extend(recent_photos_p2['photos']['photo'])
         
 
-        print "Unique photos:\t" + str(len(photo_set)) + "/" + str(len(page_1)+len(page_2))
+        print "Unique photos:\t" + str(len(photo_set)) + "/" + str(new_images_count)
  
 #            print json.dumps(recent_photos)
         
