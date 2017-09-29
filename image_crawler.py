@@ -154,7 +154,6 @@ def isMissing(imagePath):
 def daily_monitoring(photo_id, seqday):
     
     try:
-        photo_id = '23541071868'
 
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
@@ -251,11 +250,13 @@ def daily_monitoring(photo_id, seqday):
                         "', '"+str(date_posted)+"', '"+str(date_taken) +  \
                         "', '"+str(date_download)+"', '"+str(user_id)+"')")
                       #  ", "+str(json.dumps(photo_groups_ids))+")")
+            con.commit()
             print "Header record added."
             
             
             tags = json.dumps(photo_tags).replace("'","''")
             print tags
+            con.close()
             con = lite.connect('image_info.db')
             cur = con.cursor()
             q = "INSERT INTO image_info(FlickrId, \
@@ -277,9 +278,11 @@ def daily_monitoring(photo_id, seqday):
                         ", "+str(avg_group_photos) +", '"+ tags +"', '"+lat +"', '"+lon + \
                         "', '"+country+"')"
             cur.execute(q)
+            con.commit()
+            con.close()
             print "Image info record added."
-        
-        con.close()
+       
+        """
         con = lite.connect('headers.db')
         cur = con.cursor()
         rows = cur.execute("SELECT * FROM headers")
@@ -291,6 +294,8 @@ def daily_monitoring(photo_id, seqday):
         rows = cur.execute("SELECT * FROM image_info")
         for r in rows:
             print r
+        
+        """
         return True
         #Getting daily information
         photo_views = int(photo_info['views'])
