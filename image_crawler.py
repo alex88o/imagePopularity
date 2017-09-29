@@ -158,14 +158,14 @@ def daily_monitoring(photo_id, seqday):
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
         print "request result:\t"+response['stat']
         photo_info = response['photo']
+        ext = 'jpg'
+        photo_url = 'https://farm'+str(photo_info['farm'])+'.staticflickr.com/'+str(photo_info['server'])+'/'+photo_id+'_'+str(photo_info['secret'])+'_b.'+ext
+        user_id = photo_info['owner']['nsid']
              
         # seqday == 0 only the first time
         if seqday == 0:
-            ext = 'jpg'
-            photo_url = 'https://farm'+str(photo_info['farm'])+'.staticflickr.com/'+str(photo_info['server'])+'/'+photo_id+'_'+str(photo_info['secret'])+'_b.'+ext
             date_posted = photo_info['dates']['posted']
             date_taken = photo_info['dates']['posted']
-            user_id = photo_info['owner']['nsid']
             dt = datetime.datetime.utcnow()
             date_download = calendar.timegm(dt.utctimetuple())
             photo_title = photo_info['title']['_content']
@@ -182,15 +182,52 @@ def daily_monitoring(photo_id, seqday):
                 lon = photo_info['location']['longitude']
                 country = photo['location']['country']['_content']
 
-        return True
+
+            print "Getting photo sizes..."
+            response = flickr.photos.getSizes(api_key = api_key, photo_id=photo_id)            
+            print "request result:\t"+response['stat']
+            photo_size = 0
+            for sz in response['sizes']['size']:
+                if sz['label'] == 'Original':
+                    print "w"+ sz['width']
+                    print "h"+ sz['height']
+                    photo_size = int(sz['width']) * int(sz['height'])
+                    print photo_size
+                    break
             
+            print "Getting photo contexts..."
+            response = flickr.photos.getAllContexts(api_key = api_key, photo_id=photo_id)            
+            print "request result:\t"+response['stat']
+            photo_sets = 0
+            photo_groups = 0
+            photo_groups_ids =[]
+            groups_members =[]
+            gruops_photos = []
+            if 'set' in response:
+                photo_set = len(response['set'])
+            if 'pool' in response:
+                photo_groups = len(response['pool'])
+                photo_groups_ids = [g['id'] for g in response['pool']]
+                groups_members = [int(g['members']) for g in response['pool']]
+                groups_photos = [int(g['pool_count']) for g in response['pool']]
+                avg_group_memb = mean(groups_members)
+                avg_group_photos = mean(groups_photos)
+                
+        #Getting daily information
         photo_views = int(photo_info['views'])
         photo_comments = int(photo_info['comments']['_content'])        
+
+        print "Getting photo favorites..."
+        response = flickr.photos.getFavorites(api_key = api_key, photo_id=photo_id)            
+        print "request result:\t"+response['stat']
+        photo_favorites = int(response['photo']['total'])
+     
+        print photo_url,'\n','views:\t',photo_views,'\tcomments:\t',photo_comments
+
+        return True
+            
      #   last_update = photo_info['dates']['lastupdate']
        # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
-     
-        # photos.getFavorites()-->total
-        print photo_url,'\n','views:\t',photo_views,'\tcomments:\t',photo_comments
         
         # Download the photo and check if still available
         img_path = "images/"+photo_id#+".jpg"   
@@ -244,7 +281,7 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							GroupsIds TEXT, \
 							DateCrawl TEXT)"
 
-create_db(headers_db, t_name, query, drop_existing = False)
+create_db(headers_db, t_name, query, drop_existing = True)
 
 
 # Information that shouldn't change. If they do, a new record is added.
@@ -258,6 +295,8 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							Description TEXT, \
                                 NumSets INT, \
                                 NumGroups INT, \
+                                AvgGroupsMemb REAL, \
+                                AvgGroupPhotos REAL, \
 							Tags TEXT, \
 							DatePosted TEXT, \
 							DateTaken, \
@@ -266,7 +305,7 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							Longitude TEXT, \
                                 Country TEXT)"
 
-create_db(image_info_db, t_name, query, drop_existing = False)
+create_db(image_info_db, t_name, query, drop_existing = True)
 
 # Information collected daily
 t_name = 'image_daily'
@@ -294,7 +333,7 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
                                 GroupsAvgMembers REAL, \
                                 GroupsAvgPictures REAL)"
 
-create_db(user_info_db, t_name, query, drop_existing = False)
+create_db(user_info_db, t_name, query, drop_existing = True)
 
 
 t_name = 'groups_info'
@@ -304,7 +343,7 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							Members INT, \
 							Photos INT)"
 
-create_db(groups_info_db, t_name, query, drop_existing = False)
+create_db(groups_info_db, t_name, query, drop_existing = True)
 ##-----------------------------------------------------------------
 
 
