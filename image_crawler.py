@@ -121,7 +121,7 @@ def mse(A,B):
     return err
     
 def isMissing(imagePath):
-    refImgPath = project_root_dir + referenceImage
+    refImgPath = "data/" + referenceImage
     refImg = cv2.imread(refImgPath)
     curImg = cv2.imread(imagePath)
     
@@ -154,6 +154,9 @@ def isMissing(imagePath):
 def daily_monitoring(photo_id, seqday):
     
     try:
+        photo_id = '23541071868'
+
+        print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
         print "request result:\t"+response['stat']
@@ -168,8 +171,13 @@ def daily_monitoring(photo_id, seqday):
             date_taken = photo_info['dates']['posted']
             dt = datetime.datetime.utcnow()
             date_download = calendar.timegm(dt.utctimetuple())
+            photo_title = ''
             photo_title = photo_info['title']['_content']
+            photo_title = photo_title.replace("'","''")
+            print "Title: " + photo_title
+            photo_description = ''
             photo_description = photo_info['description']['_content']
+            photo_description = photo_description.replace("'","''")
             photo_tags_num = len(photo_info['tags']['tag'])
             photo_tags = [str(t['_content']) for t in photo_info['tags']['tag']]
             print "Tags:\t" + str(photo_tags_num)
@@ -177,6 +185,7 @@ def daily_monitoring(photo_id, seqday):
             
             lat = ""
             lon = ""
+            country = ""
             if 'location' in photo_info:
                 lat = photo_info['location']['latitude']
                 lon = photo_info['location']['longitude']
@@ -194,12 +203,26 @@ def daily_monitoring(photo_id, seqday):
                     photo_size = int(sz['width']) * int(sz['height'])
                     print photo_size
                     break
+      
+          # Download the photo and check if still available
+            img_path = "images/"+photo_id#+".jpg"   
+            httpRes = urllib.urlretrieve(photo_url, img_path)
+            # Questa funzione usa urllib2     
+            #downloadImage(photo_url,img_path)    
+            abs_path = os.path.abspath(img_path)
             
-            print "Getting photo contexts..."
+            
+            check = isMissing(img_path)
+            print "Is missing:\t" + str(check)
+      
+            
+            print "Getting photo contexts..." 
             response = flickr.photos.getAllContexts(api_key = api_key, photo_id=photo_id)            
             print "request result:\t"+response['stat']
             photo_sets = 0
             photo_groups = 0
+            avg_group_memb =0
+            avg_group_photos = 0
             photo_groups_ids =[]
             groups_members =[]
             gruops_photos = []
@@ -212,7 +235,63 @@ def daily_monitoring(photo_id, seqday):
                 groups_photos = [int(g['pool_count']) for g in response['pool']]
                 avg_group_memb = mean(groups_members)
                 avg_group_photos = mean(groups_photos)
-                
+            #    if photo_groups > 0:
+                #    print json.dumps(photo_groups_ids)
+            
+            con = lite.connect('headers.db')
+            cur = con.cursor()
+            cur.execute("INSERT INTO headers(FlickrId, \
+                                                URL, \
+                                                Path, \
+                                                DatePosted, \
+                                                DateTaken, \
+                                                DateCrawl, \
+                                                UserId) VALUES('"+\
+                        photo_id+"', '"+photo_url+"', '"+abs_path + \
+                        "', '"+str(date_posted)+"', '"+str(date_taken) +  \
+                        "', '"+str(date_download)+"', '"+str(user_id)+"')")
+                      #  ", "+str(json.dumps(photo_groups_ids))+")")
+            print "Header record added."
+            
+            
+            tags = json.dumps(photo_tags).replace("'","''")
+            print tags
+            con = lite.connect('image_info.db')
+            cur = con.cursor()
+            q = "INSERT INTO image_info(FlickrId, \
+                                                Day, \
+                                                Size, \
+                                                Title, \
+                                                Description, \
+                                                NumSets, \
+                                                NumGroups, \
+                                                AvgGroupsMemb, \
+                                                AvgGroupPhotos, \
+                                                Tags, \
+                                                Latitude, \
+                                                Longitude, \
+                                                Country) VALUES('"+\
+                        photo_id+"', "+str(seqday)+", "+str(photo_size)+", '"+photo_title + \
+                        "', '"+photo_description+"', "+str(photo_sets) +  \
+                        ", "+str(photo_groups)+", "+str(avg_group_memb)+ \
+                        ", "+str(avg_group_photos) +", '"+ tags +"', '"+lat +"', '"+lon + \
+                        "', '"+country+"')"
+            cur.execute(q)
+            print "Image info record added."
+        
+        con.close()
+        con = lite.connect('headers.db')
+        cur = con.cursor()
+        rows = cur.execute("SELECT * FROM headers")
+        for r in rows:
+            print r
+        con.close()
+        con = lite.connect('image_info.db')
+        cur = con.cursor()
+        rows = cur.execute("SELECT * FROM image_info")
+        for r in rows:
+            print r
+        return True
         #Getting daily information
         photo_views = int(photo_info['views'])
         photo_comments = int(photo_info['comments']['_content'])        
@@ -229,20 +308,12 @@ def daily_monitoring(photo_id, seqday):
      #   last_update = photo_info['dates']['lastupdate']
        # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
         
-        # Download the photo and check if still available
-        img_path = "images/"+photo_id#+".jpg"   
-        httpRes = urllib.urlretrieve(photo_url, img_path)
-        # Questa funzione usa urllib2     
-        #downloadImage(photo_url,img_path)    
-        abs_path = os.path.abspath(img_path)
-        
-        
-        check = isMissing(img_path)
-        print "Is missing:\t" + str(check)
         if check:
             return False
     except Exception, e:
         print str(e)
+        print q
+        sys.exit(0)
     
 
 ##
@@ -275,10 +346,13 @@ user_info_db    = 'user_info.db'    #user information
 groups_info_db  = 'groups_info.db'  #groups information
 
 t_name = 'headers'
-query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
+query = "CREATE TABLE headers(Id INTEGER PRIMARY KEY, \
 							FlickrId TEXT, \
 							UserId TEXT, \
-							GroupsIds TEXT, \
+                                URL TEXT, \
+                                Path TEXT, \
+							DatePosted TEXT, \
+							DateTaken, \
 							DateCrawl TEXT)"
 
 create_db(headers_db, t_name, query, drop_existing = True)
@@ -286,9 +360,9 @@ create_db(headers_db, t_name, query, drop_existing = True)
 
 # Information that shouldn't change. If they do, a new record is added.
 t_name = 'image_info'
-query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
+query = "CREATE TABLE image_info(Id INTEGER PRIMARY KEY, \
 							FlickrId TEXT, \
-							Day TEXT, \
+							Day INT, \
                                 Camera TEXT, \
                                 Size INT, \
 							Title TEXT, \
@@ -298,9 +372,6 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
                                 AvgGroupsMemb REAL, \
                                 AvgGroupPhotos REAL, \
 							Tags TEXT, \
-							DatePosted TEXT, \
-							DateTaken, \
-							URL TEXT, \
 							Latitude TEXT, \
 							Longitude TEXT, \
                                 Country TEXT)"
@@ -309,20 +380,20 @@ create_db(image_info_db, t_name, query, drop_existing = True)
 
 # Information collected daily
 t_name = 'image_daily'
-query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
+query = "CREATE TABLE image_daily(Id INTEGER PRIMARY KEY, \
 							FlickrId TEXT, \
 							Day TEXT, \
 							Comments INT, \
                                 Views INT, \
                                 Favorites INT)"
 
-create_db(image_daily_db, t_name, query, drop_existing = False)
+create_db(image_daily_db, t_name, query, drop_existing = True)
 
 
 t_name = 'user_info'
-query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
+query = "CREATE TABLE user_info(Id INTEGER PRIMARY KEY, \
 							UserId TEXT, \
-							Day TEXT, \
+							Day INT, \
 							Username TEXT, \
                                 Ispro INT, \
                                 Contacts INT, \
@@ -339,7 +410,7 @@ create_db(user_info_db, t_name, query, drop_existing = True)
 t_name = 'groups_info'
 query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							GroupId TEXT, \
-							Day TEXT, \
+							Day INT, \
 							Members INT, \
 							Photos INT)"
 
@@ -400,7 +471,6 @@ while len(photo_set) <= new_images_count:
                 print "Skipping\t"+photo_id
                 continue
 
-            print "Skipping\t"+photo_id
             res = daily_monitoring(photo_id, 0)            
             #Remove the processed photo id from the list
             if not res:
