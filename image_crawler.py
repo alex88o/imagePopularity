@@ -240,64 +240,88 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
                                 GroupsAvgMembers REAL, \
                                 GroupsAvgPictures REAL)"
 
-""" Need to store groups info??
 create_db(user_info_db, t_name, query, drop_existing = False)
+
+
 t_name = 'groups_info'
 query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							GroupId TEXT, \
 							Day TEXT, \
-							field1 TEXT, \
-							field2 TEXT, \
-                                       field3 TEXT)"
+							Members INT, \
+							Photos INT)"
 
 create_db(groups_info_db, t_name, query, drop_existing = False)
-"""
 ##-----------------------------------------------------------------
-sys.exit(0)
 
 
 ##
-## Image crawling
+## Image and meta-data crawling
 ##
 
 
 count = 0        
 sleep_time = 10
-print "Dataset dims:\t"+str(len(image_pool))    
-#photo_id = image_pool[0]['ImageID']
+print "Number of images to download:\t"+str(new_images_count)    
 
-while count <= new_images_count:
-
-  #  if count>12:
-   #     break
+extra_info = 'date_taken, date_upload, geo, tags, description, title, views, owner_name'
+flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
 
 
+# Get the list of images to download
+new_images_count = 1000
+photo_data = []
+photo_ids = []
+while len(photo_ids) <= new_images_count:
 
+    attempts = 0
+    try :
+        """            
+        recent_photos['photos']['photo'][0].keys()
+        [u'isfamily', u'dateupload', u'ispublic', u'description', 
+        u'datetakengranularity', u'farm', u'datetakenunknown', u'views',
+        u'longitude', u'server', u'datetaken', u'isfriend', u'secret', u'ownername', 
+        u'context', u'owner', u'title', u'latitude', u'id', u'tags', u'accuracy']
+        """            
+        # Request the first 2 pages of the most recent public photos on Flickr
+        print "\n\nGetting recent photos..."
+        recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 1, extras = extra_info)
+        page_1 = [photo['id'] for photo in recent_photos_p1['photos']['photo']]
+        print "First page request:\t"+recent_photos_p1['stat']
+        recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 2, extras = extra_info)
+        page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
+        print "Second page request:\t"+recent_photos_p2['stat']
+        #Some photos may shift to the second page between the two calls            
+        photo_set = list(set(page_1+page_2))
+        photo_ids.extend(photo_set)
+        photo_data.extend(recent_photos_p1['photos']['photo'])
+        photo_data.extend(recent_photos_p2['photos']['photo'])
+        
 
-    photo_id = image_pool[i]['ImageID']        
-    flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
-    tryflag = True
-    while tryflag :
-        try :
-            print "\n\nPhoto ID:\t"+photo_id+"\t-\tgetting photo info..."
-            response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
-            print "request result:\t"+response['stat']
-            photo_info = response['photo']
-           #   response = flickr.photos.getSizes(api_key = api_key, photo_id=photo_id)
-            print "Photo ID:\t"+photo_id+"\t-\tgetting photo stats..."
-            stats = flickr.stats.getPhotoStats(date=photo_info['dates']['posted'], photo_id = photo_id)            
-            print "request result:\t"+stats['stat']
-            picts_with_stats = picts_with_stats +1
-            
-            tryflag = False
-        except Exception, e:
-            print str(e)
+        print "Unique photos:\t" + str(len(photo_set)) + "/" + str(len(page_1)+len(page_2))
+ 
+#            print json.dumps(recent_photos)
+        
+ #            response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
+ #           print "request result:\t"+response['stat']
+        """
+        sys.exit(0)
+        photo_info = response['photo']
+       #   response = flickr.photos.getSizes(api_key = api_key, photo_id=photo_id)
+        print "Photo ID:\t"+photo_id+"\t-\tgetting photo stats..."
+        stats = flickr.stats.getPhotoStats(date=photo_info['dates']['posted'], photo_id = photo_id)            
+        print "request result:\t"+stats['stat']
+        picts_with_stats = picts_with_stats +1
+        """     
+    except Exception, e:
+        print str(e)
+        if attempts >= 5:
             break
-            print "Sleeping (new attempt after "+str(sleep_time)+" seconds)..."
-            time.sleep(sleep_time)
-            print "Awake .. "
+        attempts += 1
+        print "Sleeping (new attempt after "+str(sleep_time)+" seconds)..."
+        time.sleep(sleep_time)
+        print "Awake .. "
             
-            
+"""            
     #Interrompo qui
     continue
         
@@ -309,9 +333,8 @@ while count <= new_images_count:
     photo_comments = int(photo_info['comments']['_content'])
     post_date = photo_info['dates']['posted']
     last_update = photo_info['dates']['lastupdate']
-    """
-    The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
-    """
+   # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
+ 
 #    photo_pop = 10**5 * float(photo_views)/(int(time.time()) - int(post_date))
     photo_pop = 10**5 * float(photo_views)/(int(last_update) - int(post_date))
     print photo_url,'\n','views:\t',photo_views,'\tcomments:\t',photo_comments,'\tpopularity:\t',photo_pop,' (x10^-5)'
@@ -342,15 +365,8 @@ while count <= new_images_count:
     
 #response = flickr.stats.getPhotoStats(api_key = api_key,photo_id=photo_id)
 print "Pictures with stats:\t" + str(picts_with_stats) + "/" + str(len(image_pool))
-
-"""
-TODO: 
--   image_info aggiornato giornalmente (un record per ogni giorno per ogni immagine).
--   gli altri DB sia aggiornano solo se cambia effettivamente il dato: per ogni dato tendenzialmente fisso, verificare se cambia rispetto l'ultima volta.
-
 """
 
-sys.exit(0)
 
 
 
