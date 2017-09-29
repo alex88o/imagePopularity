@@ -23,7 +23,7 @@ import numpy as np
 #import matplotlib.pyplot as plt
 from sys import argv
 import sqlite3 as lite
-
+import time, datetime, calendar
 
 """
     Settings:
@@ -49,8 +49,9 @@ api_secret = u'9bda221d1de625a9'
 oauth_token=u'72157675663685032-6052b3ccbdc594e8'
 oauth_verifier=u'1103dab7cc7d9c5e'
 
-new_images_count = 0      # Set it to zero to update the existing pictures  
-
+new_images_count = 2000      # Set it to zero to update the existing pictures  
+#TODO: scaricare 2000 foto al giorno per 7 giorni in 2 orari diversi, tot 20k
+# Es ore 12 e 24... giornamlemnte si possono variare gli orari
 """ END SETTINGS """
 
 def create_db(db_name, tab_name, query, drop_existing = False):
@@ -150,7 +151,62 @@ def isMissing(imagePath):
     """
 
 
+def daily_monitoring(photo_id, seqday):
+    
+    try:
+        print "Getting photo info..."
+        response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
+        print "request result:\t"+response['stat']
+        photo_info = response['photo']
+             
+        # seqday == 0 only the first time
+        if seqday == 0:
+            ext = 'jpg'
+            photo_url = 'https://farm'+str(photo_info['farm'])+'.staticflickr.com/'+str(photo_info['server'])+'/'+photo_id+'_'+str(photo_info['secret'])+'_b.'+ext
+            date_posted = photo_info['dates']['posted']
+            date_taken = photo_info['dates']['posted']
+            user_id = photo_info['owner']['nsid']
+            dt = datetime.datetime.utcnow()
+            date_download = calendar.timegm(dt.utctimetuple())
+            photo_title = photo_info['title']['_content']
+            photo_description = photo_info['description']['_content']
+            photo_tags_num = len(photo_info['tags']['tag'])
+            photo_tags = [str(t['_content']) for t in photo_info['tags']['tag']]
+            print "Tags:\t" + str(photo_tags_num)
+            print photo_tags
+            
+            lat = ""
+            lon = ""
+            if 'location' in photo_info:
+                lat = photo_info['location']['latitude']
+                lon = photo_info['location']['longitude']
+                country = photo['location']['country']['_content']
 
+        return True
+            
+        photo_views = int(photo_info['views'])
+        photo_comments = int(photo_info['comments']['_content'])        
+     #   last_update = photo_info['dates']['lastupdate']
+       # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
+     
+        # photos.getFavorites()-->total
+        print photo_url,'\n','views:\t',photo_views,'\tcomments:\t',photo_comments
+        
+        # Download the photo and check if still available
+        img_path = "images/"+photo_id#+".jpg"   
+        httpRes = urllib.urlretrieve(photo_url, img_path)
+        # Questa funzione usa urllib2     
+        #downloadImage(photo_url,img_path)    
+        abs_path = os.path.abspath(img_path)
+        
+        
+        check = isMissing(img_path)
+        print "Is missing:\t" + str(check)
+        if check:
+            return False
+    except Exception, e:
+        print str(e)
+    
 
 ##
 ## Load list of known images, or create a new one
@@ -170,9 +226,6 @@ else:
     with open(pickle_image_list,'r') as f:
         known_images = pickle.load(f)
 
-seqday = 0
-if len(argv)>1:
-    seqday = int(argv[1])
 ##-----------------------------------------------------------------
     
 ##
@@ -209,8 +262,8 @@ query = "CREATE TABLE "+t_name+"(Id INTEGER PRIMARY KEY, \
 							DatePosted TEXT, \
 							DateTaken, \
 							URL TEXT, \
-							Latitude DOUBLE, \
-							Longitude DOUBLE, \
+							Latitude TEXT, \
+							Longitude TEXT, \
                                 Country TEXT)"
 
 create_db(image_info_db, t_name, query, drop_existing = False)
@@ -269,20 +322,13 @@ flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
 
 
 # Get the list of images to download
-new_images_count = 1000
 photo_data = []
 photo_set = []
+not_available_photos = []
 while len(photo_set) <= new_images_count:
 
     attempts = 0
     try :
-        """            
-        recent_photos['photos']['photo'][0].keys()
-        [u'isfamily', u'dateupload', u'ispublic', u'description', 
-        u'datetakengranularity', u'farm', u'datetakenunknown', u'views',
-        u'longitude', u'server', u'datetaken', u'isfriend', u'secret', u'ownername', 
-        u'context', u'owner', u'title', u'latitude', u'id', u'tags', u'accuracy']
-        """            
         # Request the first 2 pages of the most recent public photos on Flickr
         print "\n\nGetting recent photos..."
         recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 1, extras = extra_info)
@@ -292,17 +338,41 @@ while len(photo_set) <= new_images_count:
         page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
         print "Second page request:\t"+recent_photos_p2['stat']
         #Some photos may shift to the second page between the two calls            
+        #TODO: invece di andare in sleep, recupera le info delle nuove immagini
+        new_photo_ids = set(page_1+page_2) - set(photo_set)
+        new_photo_ids = list(new_photo_ids)
         photo_set = list(set(photo_set+page_1+page_2))
         photo_data.extend(recent_photos_p1['photos']['photo'])
         photo_data.extend(recent_photos_p2['photos']['photo'])
         
-
         print "Unique photos:\t" + str(len(photo_set)) + "/" + str(new_images_count)
- 
-#            print json.dumps(recent_photos)
+        print "Adding\t" + str(len(new_photo_ids))+ "\tnew photos"
         
- #            response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
- #           print "request result:\t"+response['stat']
+        """            
+        recent_photos['photos']['photo'][0].keys()
+        [u'isfamily', u'dateupload', u'ispublic', u'description', 
+        u'datetakengranularity', u'farm', u'datetakenunknown', u'views',
+        u'longitude', u'server', u'datetaken', u'isfriend', u'secret', u'ownername', 
+        u'context', u'owner', u'title', u'latitude', u'id', u'tags', u'accuracy']
+        """            
+        for photo in photo_data:
+            photo_id = photo['id']
+            if photo_id not in new_photo_ids:
+                print "Skipping\t"+photo_id
+                continue
+
+            print "Skipping\t"+photo_id
+            res = daily_monitoring(photo_id, 0)            
+            #Remove the processed photo id from the list
+            if not res:
+                not_available_photos.append(photo_id)
+            
+            new_photo_ids.remove(photo_id)
+            
+  
+        print "Sleeping (new attempt after "+str(120)+" seconds)..."
+        time.sleep(120)
+        
         """
         sys.exit(0)
         photo_info = response['photo']
@@ -315,12 +385,20 @@ while len(photo_set) <= new_images_count:
     except Exception, e:
         print str(e)
         if attempts >= 5:
+            print "Too many failed attempts. Exit."
             break
         attempts += 1
         print "Sleeping (new attempt after "+str(sleep_time)+" seconds)..."
         time.sleep(sleep_time)
         print "Awake .. "
             
+
+"""
+TODO:
+    - aggiorno lista data pickle
+    - faccio la chiamata per day 0
+    - implementare chiamata a parte per daily update
+"""
 """            
     #Interrompo qui
     continue
