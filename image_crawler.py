@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 #import matplotlib.pyplot as plt
 from sys import argv
+from shutil import copyfile
 import sqlite3 as lite
 import time, datetime, calendar
 
@@ -213,7 +214,11 @@ def daily_monitoring(photo_id, seqday):
             
             check = isMissing(img_path)
             print "Is missing:\t" + str(check)
-      
+            if check:
+                copyfile(abs_path, "missing/"+photo_id)
+                os.remove(abs_path)
+                abs_path = os.path.abspath("missing/"+photo_id)
+            
             
             print "Getting photo contexts..." 
             response = flickr.photos.getAllContexts(api_key = api_key, photo_id=photo_id)            
