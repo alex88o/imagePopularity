@@ -1,5 +1,3 @@
-
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python
 #title:		image_crawler.py
 #description:	Download the last public images from Flickr with associated information
@@ -18,7 +16,6 @@ import urllib, urllib2
 import sqlite3 as lite
 import csv
 import sys, os, os.path
-#sys.setdefaultencoding('utf8')
 import time
 from skimage.measure import structural_similarity as ssim
 import cv2
@@ -28,7 +25,6 @@ from sys import argv
 from shutil import copyfile
 import sqlite3 as lite
 import time, datetime, calendar
-import ftfy
 
 """
     Settings:
@@ -155,20 +151,11 @@ def isMissing(imagePath):
     plt.show()    
     """
 
-def sanitize_text(s):
-    s = unicode(s)
-    s = s.replace("'"," ")
-    s = s.replace("’"," ")
-    s = s.replace("\""," ")
-    s = s.replace("\n"," ")
-    s = ftfy.fix_text(s)
-    return s
-        
+
 def daily_monitoring(photo_id, seqday):
     
     try:
-     #  photo_id = "23557782078"
-      #  photo_id = "14131308870"
+
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
@@ -186,26 +173,15 @@ def daily_monitoring(photo_id, seqday):
             date_download = calendar.timegm(dt.utctimetuple())
             photo_title = ''
             photo_title = photo_info['title']['_content']
-            photo_title = photo_title.replace("'"," ")
-            photo_title = photo_title.replace("’"," ")
-            photo_title = photo_title.replace("\n"," ")
-            photo_title = ftfy.fix_text(unicode(photo_title))
+            photo_title = photo_title.replace("'","''")
             print "Title: " + photo_title
-
-            #TODO: use the function sanitize_text
             photo_description = ''
             photo_description = photo_info['description']['_content']
-            photo_description = photo_description.replace("'"," ")
-            photo_description = photo_description.replace("’"," ")
-            photo_description = photo_description.replace("\""," ")
-            photo_description = photo_description.replace("\n"," ")
-            photo_description = ftfy.fix_text(unicode(photo_description))
-            #print "Description: " + photo_description
-            
+            photo_description = photo_description.replace("'","''")
             photo_tags_num = len(photo_info['tags']['tag'])
-            photo_tags = [sanitize_text(str(t['_content'])) for t in photo_info['tags']['tag']]
-            print "# of tags:\t" + str(photo_tags_num)
- #           print photo_tags
+            photo_tags = [str(t['_content']) for t in photo_info['tags']['tag']]
+            print "Tags:\t" + str(photo_tags_num)
+            print photo_tags
             
             lat = ""
             lon = ""
@@ -222,8 +198,10 @@ def daily_monitoring(photo_id, seqday):
             photo_size = 0
             for sz in response['sizes']['size']:
                 if sz['label'] == 'Original':
+                    print "w"+ sz['width']
+                    print "h"+ sz['height']
                     photo_size = int(sz['width']) * int(sz['height'])
-                    print "Original size:\t\t"+str(photo_size)+"\t("+ sz['height'] +" X " + sz['width'] +")"
+                    print photo_size
                     break
       
           # Download the photo and check if still available
@@ -232,13 +210,15 @@ def daily_monitoring(photo_id, seqday):
             # Questa funzione usa urllib2     
             #downloadImage(photo_url,img_path)    
             abs_path = os.path.abspath(img_path)
-                        
+            
+            
             check = isMissing(img_path)
             print "Is missing:\t" + str(check)
             if check:
                 copyfile(abs_path, "missing/"+photo_id)
                 os.remove(abs_path)
-                abs_path = os.path.abspath("missing/"+photo_id)            
+                abs_path = os.path.abspath("missing/"+photo_id)
+            
             
             print "Getting photo contexts..." 
             response = flickr.photos.getAllContexts(api_key = api_key, photo_id=photo_id)            
@@ -249,70 +229,19 @@ def daily_monitoring(photo_id, seqday):
             avg_group_photos = 0
             photo_groups_ids =[]
             groups_members =[]
-            groups_photos = []
+            gruops_photos = []
             if 'set' in response:
-                photo_sets = len(response['set'])
+                photo_set = len(response['set'])
             if 'pool' in response:
                 photo_groups = len(response['pool'])
                 photo_groups_ids = [g['id'] for g in response['pool']]
                 groups_members = [int(g['members']) for g in response['pool']]
                 groups_photos = [int(g['pool_count']) for g in response['pool']]
-                avg_group_memb = 0 if len(groups_members)==0 else mean(groups_members)
-                avg_group_photos = 0 if len(groups_photos)==0 else mean(groups_photos)
+                avg_group_memb = mean(groups_members)
+                avg_group_photos = mean(groups_photos)
             #    if photo_groups > 0:
                 #    print json.dumps(photo_groups_ids)
-            print "The photo is shared through\t" +str(photo_sets)+"\talbums and\t"+str(photo_groups)+"\tgroups."
- 
- 
-            print "Getting user info..."
-            response = flickr.people.getInfo(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            ispro = int(response['person']['ispro'])
-            has_stats = int(response['person']['has_stats']) 
-            username = response['person']['username']['_content']
-            location = response['person']['location']['_content']        
-            user_photos = int(response['person']['photos']['count']['_content'])         
- 
-             
-            #Notes: the mean of the views takes into account the oldest 500 photos of the user (or fewer)
-            print "Getting photos stats..."
-            response = flickr.people.getPublicPhotos(api_key = api_key, user_id=user_id, extras='views', page=1, per_page=500)            
-            print "request result:\t"+response['stat']
-            user_photo_views = [int(p['views']) for p in response['photos']['photo']]
-            user_mean_views = mean(user_photo_views)
-            print "The user's photos have a mean view rate of\t"+str(user_mean_views)+"\tcomputed on the oldest \t"+str(len(user_photo_views))+"\tphotos of\t"+str(user_photos)+"\tphotos."
-
-
-            print "Getting user contacts..."
-            response = flickr.contacts.getPublicList(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            contacts = int(response['contacts']['total'])
             
-            print "Getting user groups info..."
-            response = flickr.people.getGroups(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            user_groups_membs = [int(g['members']) for g in response['groups']['group']]
-            user_groups_photos = [int(g['pool_count']) for g in response['groups']['group']]
-            user_groups = len(user_groups_photos)
-            avg_user_gmemb = 0 if len(user_groups_membs)==0 else mean(user_groups_membs)
-            avg_user_gphotos = 0 if len(user_groups_photos)==0 else mean(user_groups_photos)
-            print "The user has\t"+str(contacts)+"\tcontacts and is enrolled in\t" +str(user_groups)+"\tgroups with\t"+str(avg_user_gmemb)+"\tmean members and\t"+str(avg_user_gphotos)+"\tmean photos."
-
-            """                                
-            UserId TEXT, \
-							Day INT, \
-							Username TEXT, \
-            Ispro INT, \
-            Contacts INT, \
-							Location TEXT, \
-            PhotoCount INT, \
-            MeanViews REAL, \
-            GroupsCount INT, \
-            GroupsAvgMembers REAL, \
-            GroupsAvgPictures REAL)"
-            """
- 
- 
             con = lite.connect('headers.db')
             cur = con.cursor()
             cur.execute("INSERT INTO headers(FlickrId, \
@@ -372,6 +301,7 @@ def daily_monitoring(photo_id, seqday):
             print r
         
         """
+        return True
         #Getting daily information
         photo_views = int(photo_info['views'])
         photo_comments = int(photo_info['comments']['_content'])        
@@ -391,9 +321,8 @@ def daily_monitoring(photo_id, seqday):
         if check:
             return False
     except Exception, e:
-        print "ERROR with Photo\t"+photo_id+":"
         print str(e)
-       # print q
+        print q
         sys.exit(0)
     
 
@@ -477,7 +406,6 @@ query = "CREATE TABLE user_info(Id INTEGER PRIMARY KEY, \
 							Day INT, \
 							Username TEXT, \
                                 Ispro INT, \
-                                HasStats INT, \
                                 Contacts INT, \
 							Location TEXT, \
                                 PhotoCount INT, \
