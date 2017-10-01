@@ -38,7 +38,7 @@ import ftfy
 
 """
 # Null image name
-referenceImage="flickrMissing"
+nullImages= ["flickrMissing", "flickrNotFound"]
 
 # Credenziali The Social Picture
 api_key = u'c3388aa658417c77dcc98d5f9dc3ac91'
@@ -126,20 +126,24 @@ def mse(A,B):
     return err
     
 def isMissing(imagePath):
-    refImgPath = "data/" + referenceImage
-    refImg = cv2.imread(refImgPath)
-    curImg = cv2.imread(imagePath)
-    
+    for referenceImage in nullImages:
+        refImgPath = "data/" + referenceImage
+        refImg = cv2.imread(refImgPath)
+        curImg = cv2.imread(imagePath)
         
-    refImg = cv2.cvtColor(refImg, cv2.COLOR_BGR2GRAY)
-    curImg = cv2.cvtColor(curImg, cv2.COLOR_BGR2GRAY)
+            
+        refImg = cv2.cvtColor(refImg, cv2.COLOR_BGR2GRAY)
+        curImg = cv2.cvtColor(curImg, cv2.COLOR_BGR2GRAY)
+        
+        curImg = cv2.resize(curImg,(refImg.shape[1], refImg.shape[0]))
+        
+        
+        s = ssim(refImg,curImg)
+        print "SSIM:\t"+str(s)
+        if s>0.99:
+            return True
+    return False
     
-    curImg = cv2.resize(curImg,(refImg.shape[1], refImg.shape[0]))
-    
-    
-    s = ssim(refImg,curImg)
-    print "SSIM:\t"+str(s)
-    return s>0.99
     """
     fig = plt.figure("Image comparison")
     plt.suptitle("MSE: "+str(m))
@@ -168,7 +172,7 @@ def daily_monitoring(photo_id, seqday):
     
     try:
      #   photo_id = "23557782078"
-        photo_id = "36717094514"
+     #   photo_id = "36717094514"
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
