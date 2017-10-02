@@ -54,9 +54,8 @@ api_secret = u'9bda221d1de625a9'
 oauth_token=u'72157675663685032-6052b3ccbdc594e8'
 oauth_verifier=u'1103dab7cc7d9c5e'
 
+pickle_image_list = 'known_images.pickle'
 new_images_count = 2000      # Set it to zero to update the existing pictures  
-#TODO: scaricare 2000 foto al giorno per 7 giorni in 2 orari diversi, tot 20k
-# Es ore 12 e 24... giornamlemnte si possono variare gli orari
 """ END SETTINGS """
 
 def create_db(db_name, tab_name, query, drop_existing = False):
@@ -144,20 +143,6 @@ def isMissing(imagePath):
             return True
     return False
     
-    """
-    fig = plt.figure("Image comparison")
-    plt.suptitle("MSE: "+str(m))
-
-    ax = fig.add_subplot(1,2,1)
-    plt.imshow(refImg, cmap= plt.cm.gray)
-    plt.axis("off")
-
-    ax = fig.add_subplot(1,2,2)
-    plt.imshow(refImg, cmap= plt.cm.gray)
-    plt.axis("off")
-
-    plt.show()    
-    """
 
 def sanitize_text(s):
     s = unicode(s)
@@ -172,7 +157,7 @@ def daily_monitoring(photo_id, seqday):
     
     try:
      #   photo_id = "23557782078"
-     #   photo_id = "36717094514"
+       # photo_id = "37190691830"
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
@@ -181,20 +166,20 @@ def daily_monitoring(photo_id, seqday):
         ext = 'jpg'
         photo_url = 'https://farm'+str(photo_info['farm'])+'.staticflickr.com/'+str(photo_info['server'])+'/'+photo_id+'_'+str(photo_info['secret'])+'_b.'+ext
         user_id = photo_info['owner']['nsid']
+        dt = datetime.datetime.utcnow()
+        date_download = calendar.timegm(dt.utctimetuple())
              
         # seqday == 0 only the first time and after three days (early period)
         if seqday == 0 or seqday == 2:
             date_posted = photo_info['dates']['posted']
             date_taken = photo_info['dates']['posted']
-            dt = datetime.datetime.utcnow()
-            date_download = calendar.timegm(dt.utctimetuple())
             photo_title = ''
             photo_title = photo_info['title']['_content']
             photo_title = photo_title.replace("'"," ")
             photo_title = photo_title.replace("’"," ")
             photo_title = photo_title.replace("\n"," ")
             photo_title = ftfy.fix_text(unicode(photo_title))
-            print "Title: " + photo_title
+       #     print "Title: " + photo_title
 
             #TODO: use the function sanitize_text
             photo_description = ''
@@ -286,24 +271,29 @@ def daily_monitoring(photo_id, seqday):
  
  
              
-            #Notes: the mean of the views takes into account the oldest 500 photos of the user (or fewer)
+            # Notes: the API allows only 500 photos per call. If the user has 
+            # a huge amount of pictures, consider only the views of the 10.000 oldest photos (i.e., 20 pages).
             print "Getting photos stats..."
             user_photo_views = []
             page_n = 1
             while len(user_photo_views)< user_photos:
+                if page_n == 10:
+                    print "Waiting 2 secs..."
+                    time.sleep(2)
+                    
                 response = flickr.people.getPublicPhotos(api_key = api_key, user_id=user_id, extras='views', page=page_n, per_page=500)            
                 print "request result:\t"+response['stat']
                 page_elements = [int(p['views']) for p in response['photos']['photo']]
                 user_photo_views.extend(page_elements)
                 page_n += 1
-                #Integrity check                
-                if len(page_elements)<500:
+                #Integrity check and upper bound                
+                if len(page_elements)<500 or page_n >20:
                     break
-            user_mean_views = mean(user_photo_views)
+            user_mean_views = 0 if len(user_photo_views)==0 else mean(user_photo_views)
             print "The user's photos have a mean view rate of\t"+str(user_mean_views)+"\tcomputed on\t"+str(len(user_photo_views))+"\tphotos."
             
             print "Getting user groups info..."
-            response = flickr.people.getGroups(api_key = api_key, user_id=user_id)            
+            response = flickr.people.getPublicGroups(api_key = api_key, user_id=user_id)            
             print "request result:\t"+response['stat']
             user_groups_membs = [int(g['members']) for g in response['groups']['group']]
             user_groups_photos = [int(g['pool_count']) for g in response['groups']['group']]
@@ -384,20 +374,6 @@ def daily_monitoring(photo_id, seqday):
             con.close()
             print "Image info record added."
        
-        """
-        con = lite.connect('headers.db')
-        cur = con.cursor()
-        rows = cur.execute("SELECT * FROM headers")
-        for r in rows:
-            print r
-        con.close()
-        con = lite.connect('image_info.db')
-        cur = con.cursor()
-        rows = cur.execute("SELECT * FROM image_info")
-        for r in rows:
-            print r
-        
-        """
         #Getting daily information
         photo_views = int(photo_info['views'])
         photo_comments = int(photo_info['comments']['_content'])        
@@ -414,25 +390,28 @@ def daily_monitoring(photo_id, seqday):
                                             Day, \
                                             Comments, \
                                             Views, \
-                                            Favorites) VALUES('"+\
+                                            Favorites, \
+                                            DateQuery) VALUES('"+\
                     photo_id+"',"+str(seqday)+", "+str(photo_comments) + \
-                    ", "+str(photo_views)+", "+str(photo_favorites)+")")
+                    ", "+str(photo_views)+", "+str(photo_favorites)+", '"+str(date_download)+"')")
         con.commit()
         con.close()
         print "Image daily record added."
         print "Image:\t"+photo_id+"\tday:\t"+str(seqday)+"\n"
+        if check:
+            return False	#The image data have been recorded in DBs but the image is not available
+
         return True
             
      #   last_update = photo_info['dates']['lastupdate']
        # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
         
-        if check:
-            return False
     except Exception, e:
         print "ERROR with Photo\t"+photo_id+":"
         print str(e)
+	return False
        # print q
-        sys.exit(0)
+#        sys.exit(0)
     
 
 ##
@@ -441,7 +420,6 @@ def daily_monitoring(photo_id, seqday):
 
 # Keeps the list of known images
 known_images = []
-pickle_image_list = 'known_images.pickle'
 
 if not os.path.isfile(pickle_image_list):
     print('Creating (empty) image list file (pickle)')
@@ -505,7 +483,8 @@ query = "CREATE TABLE image_daily(Id INTEGER PRIMARY KEY, \
 							Day INT, \
 							Comments INT, \
                                 Views INT, \
-                                Favorites INT)"
+                                Favorites INT, \
+                                DateQuery TEXT)"
 
 create_db(image_daily_db, t_name, query, drop_existing = True)
 
@@ -543,7 +522,7 @@ create_db(groups_info_db, t_name, query, drop_existing = True)
 ## Image and meta-data crawling
 ##
 
-
+tt = time.time()
 count = 0        
 sleep_time = 10
 print "Number of images to download:\t"+str(new_images_count)    
@@ -569,8 +548,8 @@ while len(photo_set) <= new_images_count:
         recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 2, extras = extra_info)
         page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
         print "Second page request:\t"+recent_photos_p2['stat']
+
         #Some photos may shift to the second page between the two calls            
-        #TODO: invece di andare in sleep, recupera le info delle nuove immagini
         new_photo_ids = set(page_1+page_2) - set(photo_set)
         new_photo_ids = list(new_photo_ids)
         photo_set = list(set(photo_set+page_1+page_2))
@@ -589,27 +568,20 @@ while len(photo_set) <= new_images_count:
                 continue
 
             res = daily_monitoring(photo_id, 0)            
-            #Remove the processed photo id from the list, handle the photo after
+            #Remove the processed photo id from the list(???), handle the photo after
             if not res:
                 not_available_photos.append(photo_id)
+            else:
+                known_images.append(photo_id)
             
-            new_photo_ids.remove(photo_id)
+            new_photo_ids.remove(photo_id)  #serve??
             
   
         print "Sleeping (new attempt after "+str(20)+" seconds)..."
         time.sleep(20)
         
-        """
-        sys.exit(0)
-        photo_info = response['photo']
-       #   response = flickr.photos.getSizes(api_key = api_key, photo_id=photo_id)
-        print "Photo ID:\t"+photo_id+"\t-\tgetting photo stats..."
-        stats = flickr.stats.getPhotoStats(date=photo_info['dates']['posted'], photo_id = photo_id)            
-        print "request result:\t"+stats['stat']
-        picts_with_stats = picts_with_stats +1
-        """     
     except Exception, e:
-        print "Error:"
+        print "ERROR:"
         print str(e)
         if attempts >= 5:
             print "Too many failed attempts. Exit."
@@ -618,12 +590,32 @@ while len(photo_set) <= new_images_count:
         print "Sleeping (new attempt after "+str(sleep_time)+" seconds)..."
         time.sleep(sleep_time)
         print "Awake .. "
-            
+
+
+with open(pickle_image_list,'wb') as f:
+    pickle.dump(list(set(photo_set+known_images)),f)      
+print "\n\n-------------\tCrawling Report\t-------------"
+print "Elapsed time (sec):\t"+ str(time.time()-tt)
 print "Not available photos:"
 print "total:\t"+ str(len(not_available_photos))
 for id in not_available_photos:
     print id
-    
+
+print "Added photos:"
+print "total:\t"+ str(len(photo_set))    
+print "Known images:"
+print "total:\t"+ str(len(known_images))
+
+con = lite.connect('daily_info.db')
+cur = con.cursor()
+rows = cur.execute("SELECT FlickrId, Views FROM daily_info WHERE Day = 0")
+for r in rows:
+    print r
+print "Total in DB:\t"+str(len(rows))
+con.close()
+
+
+
 """
 TODO:
     - aggiorno lista data pickle
