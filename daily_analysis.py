@@ -8,7 +8,7 @@ Created on Mon Oct  2 11:13:27 2017
 from image_crawler import daily_monitoring
 import pickle
 from sys import argv
-
+from datetime import datetime
 
 
 # Credenziali iplabsocial (alessandro.ortis)
@@ -22,9 +22,6 @@ oauth_token=u'72157675663685032-6052b3ccbdc594e8'
 oauth_verifier=u'1103dab7cc7d9c5e'
 pickle_image_list = 'known_images.pickle'
 
-
-
-
 with open(pickle_image_list,'r') as f:
     images_list = pickle.load(f)
 
@@ -35,13 +32,23 @@ print "duplicates:\t"+str(dup)
 
 seqday = int(argv[1])
 err_list = []
+
+print "\n\nSTART\n************\tUTC\t"+str(datetime.utcnow())+"\t************"
+print "Updating engagement state of\t"+str(len(images_list))+"\t photos"
 for photo_id in images_list:
-    res = daily_monitoring(photo_id, seqday) 
-    if res:
-        print "Image\t"+photo_id+"\tanalyzed for day\t"+str(seqday)
-    else:
-        print "Image\t"+photo_id+"\terror occurred during day\t"+str(seqday)
+   try:
+       res = daily_monitoring(photo_id, seqday) 
+       if res:
+            print "Image\t"+photo_id+"\tanalyzed for day\t"+str(seqday)
+       else:
+            print "Image\t"+photo_id+"\terror occurred during day\t"+str(seqday)
+            err_list.append(photo_id)
+   except Exception, e:
+        print "ERROR (external loop):"
+        print "FlickrId:\t"+str(photo_id)
         err_list.append(photo_id)
+        print str(e)
         
 print "Images with errors:"
 print err_list
+print "\n\nEND\n************\tUTC\t"+str(datetime.utcnow())+"\t************"

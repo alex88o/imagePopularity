@@ -55,7 +55,7 @@ oauth_token=u'72157675663685032-6052b3ccbdc594e8'
 oauth_verifier=u'1103dab7cc7d9c5e'
 
 pickle_image_list = 'known_images.pickle'
-new_images_count = 2000      # Set it to zero to update the existing pictures  
+new_images_count = 22      
 """ END SETTINGS """
 
 def create_db(db_name, tab_name, query, drop_existing = False):
@@ -138,7 +138,7 @@ def isMissing(imagePath):
         
         
         s = ssim(refImg,curImg)
-        print "SSIM:\t"+str(s)
+        print "SSIM with null picture:\t"+str(s)
         if s>0.99:
             return True
     return False
@@ -146,6 +146,7 @@ def isMissing(imagePath):
 
 def sanitize_text(s):
     s = unicode(s)
+    s = s.replace("&#39;"," ")
     s = s.replace("'"," ")
     s = s.replace("’"," ")
     s = s.replace("\""," ")
@@ -157,7 +158,11 @@ def daily_monitoring(photo_id, seqday):
     
     try:
      #   photo_id = "23557782078"
-       # photo_id = "37190691830"
+      #  photo_id = "37418539912"
+    #            [u'23600802928', u'36782732473', u'36782743333'] these Flickr IDs don't exist
+    #           [u'36783353383', u'23601757988', u'36783729883', u'36783687273']
+
+      #  photo_id = '36782743333'
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
@@ -175,25 +180,28 @@ def daily_monitoring(photo_id, seqday):
             date_taken = photo_info['dates']['posted']
             photo_title = ''
             photo_title = photo_info['title']['_content']
+    #        print "Original Title: " + photo_title
+            photo_title = photo_title.replace("&#39;"," ")
             photo_title = photo_title.replace("'"," ")
             photo_title = photo_title.replace("’"," ")
             photo_title = photo_title.replace("\n"," ")
             photo_title = ftfy.fix_text(unicode(photo_title))
-       #     print "Title: " + photo_title
+     #       print "Title: " + photo_title
 
             #TODO: use the function sanitize_text
             photo_description = ''
             photo_description = photo_info['description']['_content']
+            photo_description = photo_description.replace("&#39;"," ")
             photo_description = photo_description.replace("'"," ")
             photo_description = photo_description.replace("’"," ")
             photo_description = photo_description.replace("\""," ")
             photo_description = photo_description.replace("\n"," ")
             photo_description = ftfy.fix_text(unicode(photo_description))
-            #print "Description: " + photo_description
+      #      print "Description: " + photo_description
             
             photo_tags_num = len(photo_info['tags']['tag'])
             photo_tags = [sanitize_text(str(t['_content'])) for t in photo_info['tags']['tag']]
-            print "# of tags:\t" + str(photo_tags_num)
+    #        print "# of tags:\t" + str(photo_tags_num)
  #           print photo_tags
             
             lat = ""
@@ -202,7 +210,8 @@ def daily_monitoring(photo_id, seqday):
             if 'location' in photo_info:
                 lat = photo_info['location']['latitude']
                 lon = photo_info['location']['longitude']
-                country = photo['location']['country']['_content']
+                if 'country' in photo_info['location']:
+                    country = photo_info['location']['country']['_content']
 
 
             print "Getting photo sizes..."
@@ -253,81 +262,93 @@ def daily_monitoring(photo_id, seqday):
             print "The photo is shared through\t" +str(photo_sets)+"\talbums and\t"+str(photo_groups)+"\tgroups."
  
  
-            print "Getting user info..."
-            response = flickr.people.getInfo(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            ispro = int(response['person']['ispro'])
-            has_stats = int(response['person']['has_stats']) 
-            username = response['person']['username']['_content']
-#            if 'location' in response['person']:
- #               location = response['person']['location']['_content']        
-
-            user_photos = int(response['person']['photos']['count']['_content'])        
-
-            print "Getting user contacts..."
-            response = flickr.contacts.getPublicList(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            contacts = int(response['contacts']['total'])
- 
- 
-             
-            # Notes: the API allows only 500 photos per call. If the user has 
-            # a huge amount of pictures, consider only the views of the 10.000 oldest photos (i.e., 20 pages).
-            print "Getting photos stats..."
-            user_photo_views = []
-            page_n = 1
-            while len(user_photo_views)< user_photos:
-                if page_n == 10:
-                    print "Waiting 2 secs..."
-                    time.sleep(2)
-                    
-                response = flickr.people.getPublicPhotos(api_key = api_key, user_id=user_id, extras='views', page=page_n, per_page=500)            
-                print "request result:\t"+response['stat']
-                page_elements = [int(p['views']) for p in response['photos']['photo']]
-                user_photo_views.extend(page_elements)
-                page_n += 1
-                #Integrity check and upper bound                
-                if len(page_elements)<500 or page_n >20:
-                    break
-            user_mean_views = 0 if len(user_photo_views)==0 else mean(user_photo_views)
-            print "The user's photos have a mean view rate of\t"+str(user_mean_views)+"\tcomputed on\t"+str(len(user_photo_views))+"\tphotos."
-            
-            print "Getting user groups info..."
-            response = flickr.people.getPublicGroups(api_key = api_key, user_id=user_id)            
-            print "request result:\t"+response['stat']
-            user_groups_membs = [int(g['members']) for g in response['groups']['group']]
-            user_groups_photos = [int(g['pool_count']) for g in response['groups']['group']]
-            user_groups = len(user_groups_photos)
-            avg_user_gmemb = 0 if len(user_groups_membs)==0 else mean(user_groups_membs)
-            avg_user_gphotos = 0 if len(user_groups_photos)==0 else mean(user_groups_photos)
-            print "The user has\t"+str(contacts)+"\tcontacts and is enrolled in\t" +str(user_groups)+"\tgroups with\t"+str(avg_user_gmemb)+"\tmean members and\t"+str(avg_user_gphotos)+"\tmean photos."
-
-            # DB interaction
-
             con = lite.connect('user_info.db')
             cur = con.cursor()
-            cur.execute("INSERT INTO user_info(UserId, \
-                                                Day, \
-                                                Username, \
-                                                Ispro, \
-                                                HasStats, \
-                                                Contacts, \
-                                                PhotoCount, \
-                                                MeanViews, \
-                                                GroupsCount, \
-                                                GroupsAvgMembers, \
-                                                GroupsAvgPictures) VALUES('"+\
-                        user_id+"', "+str(seqday)+", '"+username + \
-                        "', "+str(ispro)+", "+str(has_stats) +  \
-                        ", "+str(contacts)+", "+str(user_photos) + \
-                        ", "+str(user_mean_views)+", "+str(user_groups) + \
-                        ", "+str(avg_user_gmemb)+", "+str(avg_user_gphotos) + \
-                        ")")
-                      #  ", "+str(json.dumps(photo_groups_ids))+")")
-            con.commit()
-            con.close()
-            print "User record added." 
- 
+            cur.execute("SELECT * FROM user_info WHERE UserId = '"+str(user_id)+"'")
+            if len(cur.fetchall()) > 0 and seqday!=2:
+                print "User\t"+str(user_id)+"\talready registered."
+            else:
+                con.close()
+                print "Getting user info..."
+                response = flickr.people.getInfo(api_key = api_key, user_id=user_id)            
+                print "request result:\t"+response['stat']
+                ispro = int(response['person']['ispro'])
+                has_stats = int(response['person']['has_stats']) 
+                username = response['person']['username']['_content']
+    #            if 'location' in response['person']:
+     #               location = response['person']['location']['_content']        
+    
+                user_photos = int(response['person']['photos']['count']['_content'])        
+    
+                print "Getting user contacts..."
+                response = flickr.contacts.getPublicList(api_key = api_key, user_id=user_id)            
+                print "request result:\t"+response['stat']
+                contacts = int(response['contacts']['total'])
+     
+     
+                 
+                # Notes: the API allows only 500 photos per call. If the user has 
+                # a huge amount of pictures, consider only the views of the 10.000 oldest photos (i.e., 20 pages).
+                print "Getting photos stats..."
+                user_photo_views = []
+                page_n = 1
+                while len(user_photo_views)< user_photos:
+                    if page_n == 10:
+                        print "Waiting 2 secs..."
+                        time.sleep(2)
+                        
+                    response = flickr.people.getPublicPhotos(api_key = api_key, user_id=user_id, extras='views', page=page_n, per_page=500)            
+                    print "request result:\t"+response['stat']
+                    page_elements = [int(p['views']) for p in response['photos']['photo']]
+                    user_photo_views.extend(page_elements)
+                    page_n += 1
+                    #Integrity check and upper bound                
+                    if len(page_elements)<500 or page_n >20:
+                        break
+                user_mean_views = 0 if len(user_photo_views)==0 else mean(user_photo_views)
+                print "The user's photos have a mean view rate of\t"+str(user_mean_views)+"\tcomputed on\t"+str(len(user_photo_views))+"\tphotos."
+                
+                print "Getting user groups info..."
+                response = flickr.people.getPublicGroups(api_key = api_key, user_id=user_id)            
+                print "request result:\t"+response['stat']
+                user_groups_membs = [int(g['members']) for g in response['groups']['group']]
+                user_groups_photos = [int(g['pool_count']) for g in response['groups']['group']]
+                user_groups = len(user_groups_photos)
+                avg_user_gmemb = 0 if len(user_groups_membs)==0 else mean(user_groups_membs)
+                avg_user_gphotos = 0 if len(user_groups_photos)==0 else mean(user_groups_photos)
+                print "The user has\t"+str(contacts)+"\tcontacts and is enrolled in\t" +str(user_groups)+"\tgroups with\t"+str(avg_user_gmemb)+"\tmean members and\t"+str(avg_user_gphotos)+"\tmean photos."
+    
+    
+    
+                # DB interaction
+    
+                con = lite.connect('user_info.db')
+                cur = con.cursor()
+                cur.execute("INSERT INTO user_info(UserId, \
+                                                    Day, \
+                                                    Username, \
+                                                    Ispro, \
+                                                    HasStats, \
+                                                    Contacts, \
+                                                    PhotoCount, \
+                                                    MeanViews, \
+                                                    GroupsCount, \
+                                                    GroupsAvgMembers, \
+                                                    GroupsAvgPictures) VALUES('"+\
+                            user_id+"', "+str(seqday)+", '"+username + \
+                            "', "+str(ispro)+", "+str(has_stats) +  \
+                            ", "+str(contacts)+", "+str(user_photos) + \
+                            ", "+str(user_mean_views)+", "+str(user_groups) + \
+                            ", "+str(avg_user_gmemb)+", "+str(avg_user_gphotos) + \
+                            ")")
+                          #  ", "+str(json.dumps(photo_groups_ids))+")")
+                con.commit()
+                con.close()
+                print "User record added." 
+     
+            #----------- user info ----
+            con.close()  # closes the connection with user_info.db
+            
             con = lite.connect('headers.db')
             cur = con.cursor()
             cur.execute("INSERT INTO headers(FlickrId, \
@@ -346,9 +367,9 @@ def daily_monitoring(photo_id, seqday):
             con.close()
             print "Header record added."
             
-            
+            # Single quote escape
             tags = json.dumps(photo_tags).replace("'","''")
-       #     print tags
+           # print tags
             con = lite.connect('image_info.db')
             cur = con.cursor()
             q = "INSERT INTO image_info(FlickrId, \
@@ -497,7 +518,6 @@ query = "CREATE TABLE user_info(Id INTEGER PRIMARY KEY, \
                                 Ispro INT, \
                                 HasStats INT, \
                                 Contacts INT, \
-							Location TEXT, \
                                 PhotoCount INT, \
                                 MeanViews REAL, \
                                 GroupsCount INT, \
@@ -533,7 +553,9 @@ flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
 
 
 # Get the list of images to download
-#photo_data = []
+#   photo_set ==>> all pictures crawled in this call
+#   known_images ==>> all pictures crawled at all
+#   new_photo_ids ==>> pictures added at each iteration
 photo_set = []
 not_available_photos = []
 while len(photo_set) <= new_images_count:
@@ -542,10 +564,10 @@ while len(photo_set) <= new_images_count:
     try :
         # Request the first 2 pages of the most recent public photos on Flickr
         print "\n\nGetting recent photos..."
-        recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 1, extras = extra_info)
+        recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 10, page= 1, extras = extra_info)
         page_1 = [photo['id'] for photo in recent_photos_p1['photos']['photo']]
         print "First page request:\t"+recent_photos_p1['stat']
-        recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 2, extras = extra_info)
+        recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 10, page= 2, extras = extra_info)
         page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
         print "Second page request:\t"+recent_photos_p2['stat']
 
@@ -560,22 +582,19 @@ while len(photo_set) <= new_images_count:
         print "Adding\t" + str(len(new_photo_ids))+ "\tnew photos"
         
 
-#        for photo in photo_data:
- #           photo_id = photo['id']
-        for photo_id in photo_set:
-            if photo_id not in new_photo_ids:
-                print "Skipping (existing)\t"+photo_id
-                continue
-
+#        for photo_id in photo_set:
+ #           if photo_id not in new_photo_ids:
+#                print "Skipping (existing)\t"+photo_id
+#                continue
+        
+        for photo_id in new_photo_ids:
             res = daily_monitoring(photo_id, 0)            
-            #Remove the processed photo id from the list(???), handle the photo after
+            #Remove the processed photo id from the list(???)
             if not res:
                 not_available_photos.append(photo_id)
             else:
                 known_images.append(photo_id)
-            
-            new_photo_ids.remove(photo_id)  #serve??
-            
+           
   
         print "Sleeping (new attempt after "+str(20)+" seconds)..."
         time.sleep(20)
@@ -593,7 +612,7 @@ while len(photo_set) <= new_images_count:
 
 
 with open(pickle_image_list,'wb') as f:
-    pickle.dump(list(set(photo_set+known_images)),f)      
+    pickle.dump(list(known_images),f)      # known_images: only pictures successfully crawled without errors
 print "\n\n-------------\tCrawling Report\t-------------"
 print "Elapsed time (sec):\t"+ str(time.time()-tt)
 print "Not available photos:"
@@ -606,68 +625,13 @@ print "total:\t"+ str(len(photo_set))
 print "Known images:"
 print "total:\t"+ str(len(known_images))
 
-con = lite.connect('daily_info.db')
+con = lite.connect('image_daily.db')
 cur = con.cursor()
-rows = cur.execute("SELECT FlickrId, Views FROM daily_info WHERE Day = 0")
+rows = cur.execute("SELECT FlickrId, Views FROM image_daily WHERE Day = 0")
+print "Total in DB:\t"+str(cur.fetchall())
 for r in rows:
     print r
-print "Total in DB:\t"+str(len(rows))
 con.close()
-
-
-
-"""
-TODO:
-    - aggiorno lista data pickle
-    - faccio la chiamata per day 0
-    - implementare chiamata a parte per daily update
-"""
-"""            
-    #Interrompo qui
-    continue
-        
-    photo_info = response['photo']
-     #       photo_url = str(photo_info['urls']['url'][0]['_content'])
-    ext = 'jpg'
-    photo_url = 'https://farm'+str(photo_info['farm'])+'.staticflickr.com/'+str(photo_info['server'])+'/'+photo_id+'_'+str(photo_info['secret'])+'_b.'+ext
-    photo_views = int(photo_info['views'])
-    photo_comments = int(photo_info['comments']['_content'])
-    post_date = photo_info['dates']['posted']
-    last_update = photo_info['dates']['lastupdate']
-   # The <date> element's lastupdate attribute is a Unix timestamp indicating the last time the photo, or any of its metadata (tags, comments, etc.) was modified.
- 
-#    photo_pop = 10**5 * float(photo_views)/(int(time.time()) - int(post_date))
-    photo_pop = 10**5 * float(photo_views)/(int(last_update) - int(post_date))
-    print photo_url,'\n','views:\t',photo_views,'\tcomments:\t',photo_comments,'\tpopularity:\t',photo_pop,' (x10^-5)'
-
-
-    # Download the photo and check if still available
-    img_path = "images2/"+photo_id#+".jpg"   
-#    httpRes = urllib.urlretrieve("https://farm5.staticflickr.com/4054/4287743529_4d1bccb6d7_b.jpg", "ciao")
-    httpRes = urllib.urlretrieve(photo_url, img_path)
-    # Questa funzione usa urllib2    
-    #downloadImage(photo_url,img_path)    
-    abs_path = os.path.abspath(img_path)
-    
-    check = isMissing(img_path)
-    print "Is missing:\t" + str(check)
-    
-    if not check:
-            count = count +1    #Only counts the 'good' photos
-
-    # DB interaction   
-    con = lite.connect('flickrCrossSentiment.db')
-    with con:
-        cur = con.cursor()
-        cur.execute("INSERT INTO Image(FlickrId, URL, Path, PostDate, LastUpdate, Comments, Views) VALUES('"+\
-                photo_id+"', '"+photo_url+"', '"+abs_path + \
-                "', "+str(post_date)+", "+str(last_update) +  \
-                ", "+str(photo_comments)+", "+str(photo_views)+")")
-    
-#response = flickr.stats.getPhotoStats(api_key = api_key,photo_id=photo_id)
-print "Pictures with stats:\t" + str(picts_with_stats) + "/" + str(len(image_pool))
-"""
-
 
 
 
