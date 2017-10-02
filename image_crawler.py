@@ -162,7 +162,7 @@ def daily_monitoring(photo_id, seqday):
     #            [u'23600802928', u'36782732473', u'36782743333'] these Flickr IDs don't exist
     #           [u'36783353383', u'23601757988', u'36783729883', u'36783687273']
         #   [u'23602491078', u'37406825706']
-        photo_id = '23602491078'
+        photo_id = '37406825706'
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
@@ -184,7 +184,7 @@ def daily_monitoring(photo_id, seqday):
             photo_title = photo_title.replace("&#39;"," ")
             photo_title = photo_title.replace("'"," ")
             photo_title = photo_title.replace("’"," ")
-            photo_title = photo_title.replace("\"," ")
+            photo_title = photo_title.replace("\""," ")
             photo_title = photo_title.replace("\n"," ")
             photo_title = ftfy.fix_text(unicode(photo_title))
      #       print "Title: " + photo_title
