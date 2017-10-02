@@ -55,7 +55,7 @@ oauth_token=u'72157675663685032-6052b3ccbdc594e8'
 oauth_verifier=u'1103dab7cc7d9c5e'
 
 pickle_image_list = 'known_images.pickle'
-new_images_count = 22      
+new_images_count = 100      
 """ END SETTINGS """
 
 def create_db(db_name, tab_name, query, drop_existing = False):
@@ -161,8 +161,8 @@ def daily_monitoring(photo_id, seqday):
       #  photo_id = "37418539912"
     #            [u'23600802928', u'36782732473', u'36782743333'] these Flickr IDs don't exist
     #           [u'36783353383', u'23601757988', u'36783729883', u'36783687273']
-
-      #  photo_id = '36782743333'
+        #   [u'23602491078', u'37406825706']
+        photo_id = '23602491078'
         print "\nProcessing photo with FlickrId:\t" +photo_id
         print "Getting photo info..."
         response = flickr.photos.getInfo(api_key = api_key, photo_id=photo_id)            
@@ -184,6 +184,7 @@ def daily_monitoring(photo_id, seqday):
             photo_title = photo_title.replace("&#39;"," ")
             photo_title = photo_title.replace("'"," ")
             photo_title = photo_title.replace("’"," ")
+            photo_title = photo_title.replace("\"," ")
             photo_title = photo_title.replace("\n"," ")
             photo_title = ftfy.fix_text(unicode(photo_title))
      #       print "Title: " + photo_title
@@ -275,6 +276,7 @@ def daily_monitoring(photo_id, seqday):
                 ispro = int(response['person']['ispro'])
                 has_stats = int(response['person']['has_stats']) 
                 username = response['person']['username']['_content']
+                username = sanitize_text(username)
     #            if 'location' in response['person']:
      #               location = response['person']['location']['_content']        
     
@@ -321,29 +323,37 @@ def daily_monitoring(photo_id, seqday):
     
     
                 # DB interaction
-    
-                con = lite.connect('user_info.db')
-                cur = con.cursor()
-                cur.execute("INSERT INTO user_info(UserId, \
-                                                    Day, \
-                                                    Username, \
-                                                    Ispro, \
-                                                    HasStats, \
-                                                    Contacts, \
-                                                    PhotoCount, \
-                                                    MeanViews, \
-                                                    GroupsCount, \
-                                                    GroupsAvgMembers, \
-                                                    GroupsAvgPictures) VALUES('"+\
-                            user_id+"', "+str(seqday)+", '"+username + \
-                            "', "+str(ispro)+", "+str(has_stats) +  \
-                            ", "+str(contacts)+", "+str(user_photos) + \
-                            ", "+str(user_mean_views)+", "+str(user_groups) + \
-                            ", "+str(avg_user_gmemb)+", "+str(avg_user_gphotos) + \
-                            ")")
-                          #  ", "+str(json.dumps(photo_groups_ids))+")")
-                con.commit()
-                con.close()
+                print username
+                try:
+                    con = lite.connect('user_info.db')
+                    cur = con.cursor()
+                    q = "INSERT INTO user_info(UserId, \
+                                                        Day, \
+                                                        Username, \
+                                                        Ispro, \
+                                                        HasStats, \
+                                                        Contacts, \
+                                                        PhotoCount, \
+                                                        MeanViews, \
+                                                        GroupsCount, \
+                                                        GroupsAvgMembers, \
+                                                        GroupsAvgPictures) VALUES('"+\
+                                user_id+"', "+str(seqday)+", '"+username + \
+                                "', "+str(ispro)+", "+str(has_stats) +  \
+                                ", "+str(contacts)+", "+str(user_photos) + \
+                                ", "+str(user_mean_views)+", "+str(user_groups) + \
+                                ", "+str(avg_user_gmemb)+", "+str(avg_user_gphotos) + \
+                                ")"
+                                #  ", "+str(json.dumps(photo_groups_ids))+")")
+                    cur.execute(q)
+                    con.commit()
+                    con.close()
+                except Exception, e:
+                     print "ERROR with Photo\t"+photo_id+":"
+                     print str(e)
+                     print "Query:"
+                     print q
+                     return False
                 print "User record added." 
      
             #----------- user info ----
@@ -430,7 +440,8 @@ def daily_monitoring(photo_id, seqday):
     except Exception, e:
         print "ERROR with Photo\t"+photo_id+":"
         print str(e)
-	return False
+        sys.exit(0)
+        return False
        # print q
 #        sys.exit(0)
     
@@ -558,16 +569,18 @@ flickr = flickrapi.FlickrAPI(api_key, api_secret, format='parsed-json')
 #   new_photo_ids ==>> pictures added at each iteration
 photo_set = []
 not_available_photos = []
-while len(photo_set) <= new_images_count:
+while len(photo_set) < new_images_count:
 
+    print "Photo Set:\t"+ str(len(photo_set))    
+    print "Known images:\t"+ str(len(known_images))
     attempts = 0
     try :
         # Request the first 2 pages of the most recent public photos on Flickr
         print "\n\nGetting recent photos..."
-        recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 10, page= 1, extras = extra_info)
+        recent_photos_p1 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 1, extras = extra_info)
         page_1 = [photo['id'] for photo in recent_photos_p1['photos']['photo']]
         print "First page request:\t"+recent_photos_p1['stat']
-        recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 10, page= 2, extras = extra_info)
+        recent_photos_p2 = flickr.photos.getRecent(api_key= api_key, per_page = 500, page= 2, extras = extra_info)
         page_2 = [photo['id'] for photo in recent_photos_p2['photos']['photo']]
         print "Second page request:\t"+recent_photos_p2['stat']
 
